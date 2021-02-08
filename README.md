@@ -18,6 +18,6 @@ A simple way to automate snapshots for droplets and volumes on DigitalOcean.
 
 ## TODO
 
-[ ] Configurations via environment variables
-[ ] Snapshots for volumes
-[ ] Pack it all to run with docker
+- [ ] Configurations via environment variables
+- [ ] Snapshots for volumes
+- [ ] Pack it all to run with docker
