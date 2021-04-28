@@ -15,8 +15,8 @@ TAG = 'snap'       # snapshot all droplets with this tag
 
 client = DropletKit::Client.new(access_token: API_TOKEN)
 
-def snapshot_name(droplet)
-  "auto-#{droplet.name}-#{Time.now.to_i}"
+def snapshot_name(obj)
+  "auto-#{obj.name}-#{Time.now.to_i}"
 end
 
 def snapshot_name_matcher
@@ -25,11 +25,22 @@ end
 
 def create_snapshot(client, droplet)
   name = snapshot_name(droplet)
-  puts "  Creating snapshot #{name}..."
+  puts "  Creating droplet snapshot #{name}..."
   begin
     client.droplet_actions.snapshot(droplet_id: droplet.id, name: name)
   rescue DropletKit::FailedCreate => e
     puts "    ERROR: failed to create snapshot: #{e.inspect}"
+  end
+
+  droplet.volume_ids.each do |volume_id|
+    volume = client.volumes.find(id: volume_id)
+    name = snapshot_name(volume)
+    puts "  Creating volume snapshot #{name}..."
+    begin
+      client.volumes.create_snapshot(id: volume_id, name: name)
+    rescue DropletKit::FailedCreate => e
+      puts "    ERROR: failed to create snapshot: #{e.inspect}"
+    end
   end
 end
 
@@ -39,7 +50,7 @@ def cleanup(client, droplet)
   snapshots = snapshots.select { |snap| snap.name.match(snapshot_name_matcher) }
 
   if snapshots.count > 0
-    puts "    Found snapshots: #{snapshots.map(&:name)}"
+    puts "    Found droplet snapshots: #{snapshots.map(&:name)}"
     if snapshots.count > NUM_SNAPSHOTS
       puts "    Will remove old snapshots (limit: #{NUM_SNAPSHOTS})"
       remove_count = snapshots.count - NUM_SNAPSHOTS
@@ -53,6 +64,30 @@ def cleanup(client, droplet)
     end
   else
     puts '    No automatic snapshots found'
+  end
+
+  droplet.volume_ids.each do |volume_id|
+    volume = client.volumes.find(id: volume_id)
+    puts "  Cleaning up #{volume.name}..."
+    snapshots = client.volumes.snapshots(id: volume_id)
+    snapshots = snapshots.select { |snap| snap.name.match(snapshot_name_matcher) }
+
+    if snapshots.count > 0
+      puts "    Found volume snapshots: #{snapshots.map(&:name)}"
+      if snapshots.count > NUM_SNAPSHOTS
+        puts "    Will remove old snapshots (limit: #{NUM_SNAPSHOTS})"
+        remove_count = snapshots.count - NUM_SNAPSHOTS
+        to_remove = snapshots.sort.first(remove_count)
+        to_remove.each do |snap|
+          puts "      Removing #{snap.name}..."
+          client.snapshots.delete(id: snap.id)
+        end
+      else
+        puts "    Will not remove any snapshot (limit: #{NUM_SNAPSHOTS})"
+      end
+    else
+      puts '    No automatic snapshots found'
+    end
   end
 end
 
