@@ -44,13 +44,11 @@ def create_snapshot(client, droplet)
   end
 end
 
-def cleanup(client, droplet)
-  puts "  Cleaning up #{droplet.name}..."
-  snapshots = client.droplets.snapshots(id: droplet.id)
+def cleanup_helper(client, snapshots)
   snapshots = snapshots.select { |snap| snap.name.match(snapshot_name_matcher) }
 
   if snapshots.count > 0
-    puts "    Found droplet snapshots: #{snapshots.map(&:name)}"
+    puts "    Found snapshots: #{snapshots.map(&:name)}"
     if snapshots.count > NUM_SNAPSHOTS
       puts "    Will remove old snapshots (limit: #{NUM_SNAPSHOTS})"
       remove_count = snapshots.count - NUM_SNAPSHOTS
@@ -65,29 +63,18 @@ def cleanup(client, droplet)
   else
     puts '    No automatic snapshots found'
   end
+end
+
+def cleanup(client, droplet)
+  puts "  Cleaning up #{droplet.name}..."
+  snapshots = client.droplets.snapshots(id: droplet.id)
+  cleanup_helper(client, snapshots)
 
   droplet.volume_ids.each do |volume_id|
     volume = client.volumes.find(id: volume_id)
     puts "  Cleaning up #{volume.name}..."
     snapshots = client.volumes.snapshots(id: volume_id)
-    snapshots = snapshots.select { |snap| snap.name.match(snapshot_name_matcher) }
-
-    if snapshots.count > 0
-      puts "    Found volume snapshots: #{snapshots.map(&:name)}"
-      if snapshots.count > NUM_SNAPSHOTS
-        puts "    Will remove old snapshots (limit: #{NUM_SNAPSHOTS})"
-        remove_count = snapshots.count - NUM_SNAPSHOTS
-        to_remove = snapshots.sort.first(remove_count)
-        to_remove.each do |snap|
-          puts "      Removing #{snap.name}..."
-          client.snapshots.delete(id: snap.id)
-        end
-      else
-        puts "    Will not remove any snapshot (limit: #{NUM_SNAPSHOTS})"
-      end
-    else
-      puts '    No automatic snapshots found'
-    end
+    cleanup_helper(client, snapshots)
   end
 end
 
