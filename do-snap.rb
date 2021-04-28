@@ -1,19 +1,17 @@
 #!/usr/bin/env ruby
 
-# Requires:
-# - ruby 2.3
-# - gem droplet_kit
-#
 # Cron example:
-# 0 4 * * * /home/user/do-snap.rb >> /home/user/do-snap.log 2>&1
+# 0 4 * * * docker run -d --name snap -e API_TOKEN=XXX mconf/digital-ocean-snapshots:latest
 
 require 'droplet_kit'
+require 'logger'
 
-API_TOKEN = 'my-secret-digital-ocean-key'
-NUM_SNAPSHOTS = 3  # will keep this or +1 snaps
-TAG = 'snap'       # snapshot all droplets with this tag
+API_TOKEN = ENV['API_TOKEN']
+NUM_SNAPSHOTS = ENV['NUM_SNAPSHOTS'].to_i # will keep this or +1 snaps
+TAG = ENV['TAG'] # snapshot all droplets with this tag
 
 client = DropletKit::Client.new(access_token: API_TOKEN)
+$logger = Logger.new(STDOUT)
 
 def snapshot_name(obj)
   "auto-#{obj.name}-#{Time.now.to_i}"
@@ -25,21 +23,21 @@ end
 
 def create_snapshot(client, droplet)
   name = snapshot_name(droplet)
-  puts "  Creating droplet snapshot #{name}..."
+  $logger.info "  Creating droplet snapshot #{name}..."
   begin
     client.droplet_actions.snapshot(droplet_id: droplet.id, name: name)
   rescue DropletKit::FailedCreate => e
-    puts "    ERROR: failed to create snapshot: #{e.inspect}"
+    $logger.error "    Failed to create snapshot: #{e.inspect}"
   end
 
   droplet.volume_ids.each do |volume_id|
     volume = client.volumes.find(id: volume_id)
     name = snapshot_name(volume)
-    puts "  Creating volume snapshot #{name}..."
+    $logger.info "  Creating volume snapshot #{name}..."
     begin
       client.volumes.create_snapshot(id: volume_id, name: name)
     rescue DropletKit::FailedCreate => e
-      puts "    ERROR: failed to create snapshot: #{e.inspect}"
+      $logger.error "    Failed to create snapshot: #{e.inspect}"
     end
   end
 end
@@ -48,31 +46,31 @@ def cleanup_helper(client, snapshots)
   snapshots = snapshots.select { |snap| snap.name.match(snapshot_name_matcher) }
 
   if snapshots.count > 0
-    puts "    Found snapshots: #{snapshots.map(&:name)}"
+    $logger.info "    Found snapshots: #{snapshots.map(&:name)}"
     if snapshots.count > NUM_SNAPSHOTS
-      puts "    Will remove old snapshots (limit: #{NUM_SNAPSHOTS})"
+      $logger.info "    Will remove old snapshots (limit: #{NUM_SNAPSHOTS})"
       remove_count = snapshots.count - NUM_SNAPSHOTS
       to_remove = snapshots.sort.first(remove_count)
       to_remove.each do |snap|
-        puts "      Removing #{snap.name}..."
+        $logger.info "      Removing #{snap.name}..."
         client.snapshots.delete(id: snap.id)
       end
     else
-      puts "    Will not remove any snapshot (limit: #{NUM_SNAPSHOTS})"
+      $logger.info "    Will not remove any snapshot (limit: #{NUM_SNAPSHOTS})"
     end
   else
-    puts '    No automatic snapshots found'
+    $logger.info '    No automatic snapshots found'
   end
 end
 
 def cleanup(client, droplet)
-  puts "  Cleaning up #{droplet.name}..."
+  $logger.info "  Cleaning up #{droplet.name}..."
   snapshots = client.droplets.snapshots(id: droplet.id)
   cleanup_helper(client, snapshots)
 
   droplet.volume_ids.each do |volume_id|
     volume = client.volumes.find(id: volume_id)
-    puts "  Cleaning up #{volume.name}..."
+    $logger.info "  Cleaning up #{volume.name}..."
     snapshots = client.volumes.snapshots(id: volume_id)
     cleanup_helper(client, snapshots)
   end
@@ -80,10 +78,10 @@ end
 
 client.droplets.all.each do |droplet|
   if droplet.tags.include?(TAG)
-    puts "Backing up: #{droplet.name} (#{droplet.id})"
+    $logger.info "Backing up: #{droplet.name} (#{droplet.id})"
     create_snapshot(client, droplet)
     cleanup(client, droplet)
   else
-    puts "Skipping: #{droplet.name} (#{droplet.id})"
+    $logger.debug "Skipping: #{droplet.name} (#{droplet.id})"
   end
 end

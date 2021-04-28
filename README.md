@@ -13,11 +13,12 @@ A simple way to automate snapshots for droplets and volumes on DigitalOcean.
 
 ```
 # run once a day at 4AM UTC
-# 0 4 * * * /home/user/do-snap.rb >> /home/user/do-snap.log 2>&1
+0 4 * * * docker run -d --name snap -e API_TOKEN=XXX mconf/digital-ocean-snapshots:latest
 ```
 
 ## TODO
 
-- [ ] Configurations via environment variables
-- [ ] Snapshots for volumes
-- [ ] Pack it all to run with docker
+- [x] Configurations via environment variables
+- [x] Snapshots for volumes
+- [x] Pack it all to run with docker
+- [ ] Create a better structure so we do not need global variables
