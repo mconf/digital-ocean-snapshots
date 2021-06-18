@@ -7,7 +7,7 @@ require 'droplet_kit'
 require 'logger'
 
 API_TOKEN = ENV['API_TOKEN']
-NUM_SNAPSHOTS = ENV['NUM_SNAPSHOTS'].to_i # will keep this or +1 snaps
+NUM_SNAPSHOTS = ENV['NUM_SNAPSHOTS'].to_i # will keep this number of snaps
 TAG = ENV['TAG'] # snapshot all droplets with this tag
 
 client = DropletKit::Client.new(access_token: API_TOKEN)
@@ -43,14 +43,18 @@ def create_snapshot(client, droplet)
 end
 
 def cleanup_helper(client, snapshots)
-  snapshots = snapshots.select { |snap| snap.name.match(snapshot_name_matcher) }
+  snapshots = snapshots.select { |snap|
+    snap.name.match(snapshot_name_matcher)
+  }.sort_by { |snap|
+    Time.parse(snap.created_at).to_i
+  }
 
   if snapshots.count > 0
     $logger.info "    Found snapshots: #{snapshots.map(&:name)}"
     if snapshots.count > NUM_SNAPSHOTS
       $logger.info "    Will remove old snapshots (limit: #{NUM_SNAPSHOTS})"
       remove_count = snapshots.count - NUM_SNAPSHOTS
-      to_remove = snapshots.sort.first(remove_count)
+      to_remove = snapshots.first(remove_count)
       to_remove.each do |snap|
         $logger.info "      Removing #{snap.name}..."
         client.snapshots.delete(id: snap.id)
