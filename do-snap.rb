@@ -14,11 +14,13 @@ client = DropletKit::Client.new(access_token: API_TOKEN)
 $logger = Logger.new(STDOUT)
 
 def snapshot_name(obj)
-  "auto-#{obj.name}-#{Time.now.to_i}"
+  "auto-#{obj.name}-#{Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ")}"
 end
 
 def snapshot_name_matcher
-  /^auto-.*[0-9]{10}$/
+  # TODO: change to this regex after all `auto-<timestamp>` snaps were removed
+  # /^auto-[\d]{4}*-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}Z/
+  /^auto-.*/
 end
 
 def create_snapshot(client, droplet)
