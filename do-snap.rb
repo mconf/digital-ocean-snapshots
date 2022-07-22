@@ -18,12 +18,18 @@ TAG = ENV.fetch('TAG', 'snap')
 # default to true, setting to 'false' (case insensitive) turns it off
 DRYRUN = !ENV.fetch('DRYRUN', 'true').match(/false/i)
 
+# if the last snapshot is not older than this number of hours, won't back it up (nor remove old snaps)
+# protection in case the script runs too many times in a short period of time and ends up removing
+# snapshots that are not that old
+THRESHOLD_HOURS = ENV.fetch('THRESHOLD_HOURS', 23).to_i
+
 class DOSnap
-  def initialize(api_token, num_snapshots, tag, dryrun=true)
+  def initialize(api_token, num_snapshots, tag, threshold_h = 23, dryrun=true)
     @num_snapshots = num_snapshots
     @tag = tag
     @dryrun = dryrun
     @client = DropletKit::Client.new(access_token: api_token)
+    @threshold_h = threshold_h
 
     @logger = Logger.new(STDOUT)
     @logger.formatter = proc do |severity, datetime, progname, msg|
@@ -62,12 +68,6 @@ class DOSnap
   end
 
   def cleanup_helper(snapshots, parent)
-    snapshots = snapshots.select { |snap|
-      snap.name.match(snapshot_name_matcher)
-    }.sort_by { |snap|
-      Time.parse(snap.created_at).to_i
-    }
-
     if snapshots.count > 0
       @logger.info "#{resource_log_id(parent)} Found snapshots: #{snapshots.map(&:name).join(', ')}"
       if snapshots.count > NUM_SNAPSHOTS
@@ -86,15 +86,14 @@ class DOSnap
     end
   end
 
-  def cleanup(droplet)
+  def cleanup(droplet, snapshots)
     @logger.info "#{resource_log_id(droplet)} Cleaning up..."
-    snapshots = @client.droplets.snapshots(id: droplet.id)
     cleanup_helper(snapshots, droplet)
 
     droplet.volume_ids.each do |volume_id|
       volume = @client.volumes.find(id: volume_id)
       @logger.info "#{resource_log_id(volume)} Cleaning up..."
-      snapshots = @client.volumes.snapshots(id: volume_id)
+      snapshots = ordered_snapshots(volume, :volume)
       cleanup_helper(snapshots, volume)
     end
   end
@@ -103,18 +102,53 @@ class DOSnap
     "[#{resource.name}] [#{resource.id}]"
   end
 
+  def should_back_up(droplet, droplet_snapshots)
+    last = Time.parse(droplet_snapshots.last.created_at)
+    threshold = Time.now.utc - (@threshold_h * 60 * 60)
+    now = Time.now.utc
+    if last < threshold
+      @logger.info "#{resource_log_id(droplet)} Last snapshot is '#{last}', which is older than " \
+                   "the threshold '#{threshold}' (now '#{now}')"
+      true
+    else
+      @logger.info "#{resource_log_id(droplet)} Last snapshot is '#{last}', which is NOT older than " \
+                   "the threshold '#{threshold}' (now '#{now}')"
+      false
+    end
+  end
+
+  def ordered_snapshots(resource, type = :droplet)
+    if type == :volume
+      snapshots = @client.volumes.snapshots(id: resource.id)
+    else
+      snapshots = @client.droplets.snapshots(id: resource.id)
+    end
+    snapshots.select { |snap|
+      snap.name.match(snapshot_name_matcher)
+    }.sort_by { |snap|
+      Time.parse(snap.created_at).to_i
+    }
+  end
+
   def run
     @client.droplets.all.each do |droplet|
-      if droplet.tags.include?(TAG)
-        @logger.info "#{resource_log_id(droplet)} Backing up"
-        create_snapshot(droplet)
-        cleanup(droplet)
+      if droplet.tags.include?(@tag)
+        @logger.info "#{resource_log_id(droplet)} Checking"
+        droplet_snapshots = ordered_snapshots(droplet)
+        if should_back_up(droplet, droplet_snapshots)
+          @logger.info "#{resource_log_id(droplet)} Backing it up"
+          create_snapshot(droplet)
+          cleanup(droplet, droplet_snapshots)
+        else
+          @logger.info "#{resource_log_id(droplet)} Will not back it up"
+        end
+
       else
-        @logger.debug "#{resource_log_id(droplet)} Skipping"
+        @logger.debug "#{resource_log_id(droplet)} Skipping, no tag '#{@tag}' found"
       end
     end
   end
 end
 
-do_snap = DOSnap.new(API_TOKEN, NUM_SNAPSHOTS, TAG, DRYRUN)
+do_snap = DOSnap.new(API_TOKEN, NUM_SNAPSHOTS, TAG, THRESHOLD_HOURS, DRYRUN)
 do_snap.run
