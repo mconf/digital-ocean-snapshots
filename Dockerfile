@@ -12,8 +12,4 @@ RUN bundle install
 
 COPY . /app
 
-ENV API_TOKEN ""
-ENV NUM_SNAPSHOTS 3
-ENV TAG snap
-
 CMD [ "ruby", "/app/do-snap.rb" ]

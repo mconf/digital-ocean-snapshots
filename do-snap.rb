@@ -1,14 +1,14 @@
 #!/usr/bin/env ruby
 
 # Cron example:
-# 0 4 * * * docker run -d --name snap -e API_TOKEN=XXX mconf/digital-ocean-snapshots:latest
+# 0 4 * * * docker run -d --name snap -e API_TOKEN=XXX -e TAG=snap mconf/digital-ocean-snapshots:latest
 
 require 'droplet_kit'
 require 'logger'
 
-API_TOKEN = ENV['API_TOKEN']
-NUM_SNAPSHOTS = ENV['NUM_SNAPSHOTS'].to_i # will keep this number of snaps
-TAG = ENV['TAG'] # snapshot all droplets with this tag
+API_TOKEN = ENV.fetch('API_TOKEN')
+NUM_SNAPSHOTS = ENV.fetch('NUM_SNAPSHOTS', 3).to_i # will keep this number of snaps
+TAG = ENV.fetch('TAG', 'snap') # snapshot all droplets with this tag
 
 client = DropletKit::Client.new(access_token: API_TOKEN)
 $logger = Logger.new(STDOUT)
