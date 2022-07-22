@@ -37,9 +37,7 @@ class DOSnap
   end
 
   def snapshot_name_matcher
-    # TODO: change to this regex after all `auto-<timestamp>` snaps were removed
-    # /^auto-[\d]{4}*-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}Z/
-    /^auto-.*/
+    /^auto-.*[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}Z/i
   end
 
   def create_snapshot(droplet)
