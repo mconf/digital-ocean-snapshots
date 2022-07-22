@@ -1,21 +1,30 @@
 #!/usr/bin/env ruby
 
 # Cron example:
-# 0 4 * * * docker run -d --name snap -e API_TOKEN=XXX -e TAG=snap mconf/digital-ocean-snapshots:latest
+# 0 4 * * * docker run -d --name snap -e API_TOKEN=XXX -e TAG=snap DRYRUN=false mconf/digital-ocean-snapshots:latest
 
 require 'droplet_kit'
 require 'logger'
 
 API_TOKEN = ENV.fetch('API_TOKEN')
-NUM_SNAPSHOTS = ENV.fetch('NUM_SNAPSHOTS', 3).to_i # will keep this number of snaps
-TAG = ENV.fetch('TAG', 'snap') # snapshot all droplets with this tag
+
+# will keep this number of snapshots for each droplet or volume
+NUM_SNAPSHOTS = ENV.fetch('NUM_SNAPSHOTS', 3).to_i
+
+# snapshot all droplets with this tag
+TAG = ENV.fetch('TAG', 'snap')
+
+# default to true, setting to 'false' (case insensitive) turns it off
+DRYRUN = !ENV.fetch('DRYRUN', 'true').match(/false/i)
 
 class DOSnap
-  def initialize(api_token, num_snapshots, tag)
+  def initialize(api_token, num_snapshots, tag, dryrun=true)
     @num_snapshots = num_snapshots
     @tag = tag
+    @dryrun = dryrun
     @client = DropletKit::Client.new(access_token: api_token)
     @logger = Logger.new(STDOUT)
+    @logger.info "Running in DRYRUN mode" if @dryrun
   end
 
   def snapshot_name(obj)
@@ -32,7 +41,7 @@ class DOSnap
     name = snapshot_name(droplet)
     @logger.info "  Creating droplet snapshot #{name}..."
     begin
-      @client.droplet_actions.snapshot(droplet_id: droplet.id, name: name)
+      @client.droplet_actions.snapshot(droplet_id: droplet.id, name: name) unless @dryrun
     rescue DropletKit::FailedCreate => e
       @logger.error "    Failed to create snapshot: #{e.inspect}"
     end
@@ -42,7 +51,7 @@ class DOSnap
       name = snapshot_name(volume)
       @logger.info "  Creating volume snapshot #{name}..."
       begin
-        @client.volumes.create_snapshot(id: volume_id, name: name)
+        @client.volumes.create_snapshot(id: volume_id, name: name) unless @dryrun
       rescue DropletKit::FailedCreate => e
         @logger.error "    Failed to create snapshot: #{e.inspect}"
       end
@@ -64,7 +73,7 @@ class DOSnap
         to_remove = snapshots.first(remove_count)
         to_remove.each do |snap|
           @logger.info "      Removing #{snap.name}..."
-          @client.snapshots.delete(id: snap.id)
+          @client.snapshots.delete(id: snap.id) unless @dryrun
         end
       else
         @logger.info "    Will not remove any snapshot (limit: #{NUM_SNAPSHOTS})"
@@ -100,5 +109,5 @@ class DOSnap
   end
 end
 
-do_snap = DOSnap.new(API_TOKEN, NUM_SNAPSHOTS, TAG)
+do_snap = DOSnap.new(API_TOKEN, NUM_SNAPSHOTS, TAG, DRYRUN)
 do_snap.run
