@@ -86,13 +86,14 @@ class DOSnap
     end
   end
 
-  def cleanup(droplet, snapshots)
-    @logger.info "#{resource_log_id(droplet)} Cleaning up..."
+  def cleanup(droplet)
+    @logger.info "#{resource_log_id(droplet)} Cleaning up droplet..."
+    snapshots = ordered_snapshots(droplet)
     cleanup_helper(snapshots, droplet)
 
     droplet.volume_ids.each do |volume_id|
       volume = @client.volumes.find(id: volume_id)
-      @logger.info "#{resource_log_id(volume)} Cleaning up..."
+      @logger.info "#{resource_log_id(volume)} Cleaning up volume..."
       snapshots = ordered_snapshots(volume, :volume)
       cleanup_helper(snapshots, volume)
     end
@@ -133,16 +134,15 @@ class DOSnap
   def run
     @client.droplets.all.each do |droplet|
       if droplet.tags.include?(@tag)
-        @logger.info "#{resource_log_id(droplet)} Checking"
+        @logger.info "#{resource_log_id(droplet)} Tag found, checking backups"
         droplet_snapshots = ordered_snapshots(droplet)
         if should_back_up(droplet, droplet_snapshots)
           @logger.info "#{resource_log_id(droplet)} Backing it up"
           create_snapshot(droplet)
-          cleanup(droplet, droplet_snapshots)
         else
           @logger.info "#{resource_log_id(droplet)} Will not back it up"
         end
-
+        cleanup(droplet)
       else
         @logger.debug "#{resource_log_id(droplet)} Skipping, no tag '#{@tag}' found"
       end
