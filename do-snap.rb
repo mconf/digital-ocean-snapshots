@@ -104,6 +104,11 @@ class DOSnap
   end
 
   def should_back_up(droplet, droplet_snapshots)
+    if droplet_snapshots.last.nil?
+      @logger.info "#{resource_log_id(droplet)} Has no snapshots yet"
+      return true
+    end
+
     last = Time.parse(droplet_snapshots.last.created_at)
     threshold = Time.now.utc - (@threshold_h * 60 * 60)
     now = Time.now.utc
